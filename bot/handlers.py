@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from telegram import Update
@@ -56,6 +57,23 @@ def _authorized(update: Update) -> bool:
         return True
     user = update.effective_user
     return user is not None and user.id in allowed
+
+
+def _clean_markdown(text: str) -> str:
+    """Nettoie les artefacts markdown du modèle pour un affichage brut propre."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text, flags=re.S)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", text, flags=re.S)
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.M)
+    text = re.sub(r"^>\s?", "", text, flags=re.M)
+    text = re.sub(r"\[(.+?)\]\((.+?)\)", r"\1 (\2)", text)
+    return text
+
+
+async def _send(update: Update, text: str) -> None:
+    """Nettoie les symboles markdown, découpe et envoie la réponse."""
+    for chunk in _split_long(_clean_markdown(text)):
+        await update.message.reply_text(chunk)
 
 
 async def _deny(update: Update) -> None:
@@ -183,8 +201,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Erreur lors du traitement du texte")
         await update.message.reply_text("❌ Oups, une erreur est survenue. Réessaie.")
         return
-    for chunk in _split_long(reply):
-        await update.message.reply_text(chunk)
+    await _send(update, reply)
 
 
 async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -203,8 +220,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Erreur lors du traitement du vocal")
         await update.message.reply_text("❌ Impossible de traiter ce vocal. Réessaie.")
         return
-    for chunk in _split_long(reply):
-        await update.message.reply_text(chunk)
+    await _send(update, reply)
 
 
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -249,8 +265,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 media.async_cleanup(path)
             except Exception:
                 pass
-    for chunk in _split_long(summary):
-        await update.message.reply_text(chunk)
+    await _send(update, summary)
 
 
 # ── Erreurs ──────────────────────────────────────────────────────────
