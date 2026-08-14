@@ -30,6 +30,19 @@ class GeminiService:
             if profile
             else ""
         )
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        try:
+            from zoneinfo import ZoneInfo
+            local = now.astimezone(ZoneInfo(settings.CALENDAR_TIMEZONE))
+        except Exception:
+            local = now
+        now_block = (
+            "\n\nDATE ET HEURE ACTUELLES : nous sommes le "
+            f"{local.strftime('%A %d %B %Y à %H:%M')} (fuseau {settings.CALENDAR_TIMEZONE}). "
+            "Base-toi sur cette date pour interpréter « aujourd'hui », « demain », « samedi », "
+            "« dans 2 jours », etc. Le jour de la semaine actuel est indiqué par cette date."
+        )
         return (
             "Tu es « Nexus », un assistant personnel intelligent, ultra-compétent et "
             "dynamique, conçu pour accompagner un étudiant en informatique tout au long "
@@ -38,7 +51,7 @@ class GeminiService:
             "efficacement, gérer son stress et automatiser son quotidien via Telegram.\n\n"
             "TON ET STYLE : professionnel, encourageant, direct, légèrement geek et "
             "complice. Format clair et concis (affichage smartphone Telegram) : phrases "
-            f"courtes, listes à puces, blocs de code, emojis pertinents. Jamais de pavés.{profile_block}\n\n"
+            f"courtes, listes à puces, blocs de code, emojis pertinents. Jamais de pavés.{profile_block}{now_block}\n\n"
             "OUTILS À TA DISPOSITION (appelle-les de façon autonome quand c'est pertinent) :\n"
             "- Notion : stocker des résumés de cours, fiches de révision, To-Do list.\n"
             "- Google Agenda : planifier examens, rendus de projets, plages de révision.\n"
