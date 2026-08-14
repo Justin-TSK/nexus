@@ -385,18 +385,9 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if file_obj is None:
         return
     if message.photo:
-        suffix = ".jpg"
         filename = "photo.jpg"
     else:
         filename = getattr(file_obj, "file_name", None) or "fichier"
-        suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".bin"
-    if media.file_kind(suffix) == "unsupported":
-        accepted = media.TEXT_SUFFIXES | media.BINARY_UPLOAD_SUFFIXES | media.OFFICE_SUFFIXES
-        await update.message.reply_text(
-            f"Format « {suffix} » non supporté pour l'instant. "
-            "Formats acceptés : " + ", ".join(sorted(accepted))
-        )
-        return
 
     path = None
     try:

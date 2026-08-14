@@ -144,9 +144,15 @@ class GeminiService:
         path = Path(file_path)
         if path.suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}:
             return self._analyze_binary(path, prompt)
-        if path.suffix.lower() in {".pptx", ".docx"}:
-            from services.media import extract_pptx_text, extract_docx_text
-            text = extract_pptx_text(path) if path.suffix.lower() == ".pptx" else extract_docx_text(path)
+        if path.suffix.lower() in {".pptx", ".docx", ".xlsx", ".ods"}:
+            from services import media
+            extractors = {
+                ".pptx": media.extract_pptx_text,
+                ".docx": media.extract_docx_text,
+                ".xlsx": media.extract_xlsx_text,
+                ".ods": media.extract_ods_text,
+            }
+            text = extractors[path.suffix.lower()](path)
             if text is None:
                 return "Impossible de lire ce fichier Office."
             if len(text) > MAX_FILE_CHARS:
@@ -159,6 +165,11 @@ class GeminiService:
             raw = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return "Impossible de lire ce fichier."
+        if "\x00" in raw[:4096]:
+            return (
+                f"Impossible de lire le contenu de ce fichier (.{path.suffix.lstrip('.')}). "
+                "Formats lisibles : texte (tout), Office (docx, pptx, xlsx, ods), PDF et images."
+            )
         if len(raw) > MAX_FILE_CHARS:
             raw = raw[:MAX_FILE_CHARS] + "\n… [contenu tronqué]"
         return self._extract_text(self.generate([prompt, raw]))

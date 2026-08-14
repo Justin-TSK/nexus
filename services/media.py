@@ -19,10 +19,13 @@ TEXT_SUFFIXES = {".txt", ".md", ".py", ".json", ".csv", ".yaml", ".yml", ".js", 
 # Extensions envoyées telles quelles à Gemini (pdf, images).
 BINARY_UPLOAD_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
 # Extensions dont le texte est extrait avant analyse (Office).
-OFFICE_SUFFIXES = {".pptx", ".docx"}
+OFFICE_SUFFIXES = {".pptx", ".docx", ".xlsx", ".ods"}
 
 _PPTX_TEXT_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 _DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+_ODS_TABLE_NS = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
+_ODS_TEXT_NS = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
 
 
 def ffmpeg_available() -> bool:
@@ -124,5 +127,80 @@ def extract_docx_text(path: str | Path) -> str | None:
                 if line:
                     out.append(line)
             return "\n".join(out) or None
+    except (zipfile.BadZipFile, ET.ParseError, OSError):
+        return None
+
+
+def extract_xlsx_text(path: str | Path) -> str | None:
+    """Extrait le texte de toutes les feuilles d'un .xlsx (zip/XML + sharedStrings)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+            if not any(re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n) for n in names):
+                return None
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in names:
+                sst = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+                for si in sst:
+                    parts = [t.text or "" for t in si.iter(f"{_XLSX_NS}t")]
+                    shared.append("".join(parts))
+            sheets = sorted(
+                (n for n in names if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)),
+                key=lambda n: int(re.search(r"\d+", n).group()),
+            )
+            out = []
+            for name in sheets:
+                root = ET.fromstring(archive.read(name))
+                sheet_no = re.search(r"\d+", name).group()
+                rows = []
+                for row in root.iter(f"{_XLSX_NS}row"):
+                    cells = []
+                    for cell in row.iter(f"{_XLSX_NS}c"):
+                        cell_type = cell.get("t")
+                        v = cell.find(f"{_XLSX_NS}v")
+                        inline = cell.find(f"{_XLSX_NS}is")
+                        if cell_type == "s" and v is not None:
+                            idx = int(v.text or 0)
+                            cells.append(shared[idx] if idx < len(shared) else "")
+                        elif cell_type == "inlineStr" and inline is not None:
+                            cells.append(
+                                "".join(t.text or "" for t in inline.iter(f"{_XLSX_NS}t"))
+                            )
+                        elif cell_type == "b" and v is not None:
+                            cells.append("VRAI" if v.text == "1" else "FAUX")
+                        elif v is not None:
+                            cells.append(v.text or "")
+                    line = " | ".join(c for c in cells if c.strip())
+                    if line.strip():
+                        rows.append(line)
+                if rows:
+                    out.append(f"--- Feuille {sheet_no} ---\n" + "\n".join(rows))
+            return "\n\n".join(out) or None
+    except (zipfile.BadZipFile, ET.ParseError, OSError):
+        return None
+
+
+def extract_ods_text(path: str | Path) -> str | None:
+    """Extrait le texte des feuilles d'un .ods (OpenDocument, content.xml)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if "content.xml" not in archive.namelist():
+                return None
+            root = ET.fromstring(archive.read("content.xml"))
+            out = []
+            for table in root.iter(f"{_ODS_TABLE_NS}table"):
+                rows = []
+                for row in table.iter(f"{_ODS_TABLE_NS}table-row"):
+                    cells = []
+                    for cell in row.iter(f"{_ODS_TABLE_NS}table-cell"):
+                        txt = "".join(p.text or "" for p in cell.iter(f"{_ODS_TEXT_NS}p"))
+                        cells.append(txt.strip())
+                    line = " | ".join(c for c in cells if c.strip())
+                    if line.strip():
+                        rows.append(line)
+                if rows:
+                    name = table.get(f"{_ODS_TABLE_NS}name", "Feuille")
+                    out.append(f"--- {name} ---\n" + "\n".join(rows))
+            return "\n\n".join(out) or None
     except (zipfile.BadZipFile, ET.ParseError, OSError):
         return None
