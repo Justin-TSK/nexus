@@ -48,9 +48,27 @@ class IcloudMailClient:
             raise IcloudMailError(f"Connexion iCloud impossible : {exc}") from exc
         return conn
 
-    def list_inbox(self, criteria: str = "ALL", limit: int = 10) -> list[dict]:
+    def _select(self, conn: imaplib.IMAP4_SSL, folder: str) -> None:
+        status, _ = conn.select(folder)
+        if status != "OK":
+            raise IcloudMailError(f"Dossier « {folder} » introuvable sur iCloud.")
+
+    def list_folders(self) -> list[str]:
+        """Liste les dossiers disponibles (INBOX, Junk=spam, Archive, Deleted Messages…)."""
         with self._connect() as conn:
-            conn.select("INBOX")
+            status, data = conn.list()
+            names = []
+            for line in data:
+                text = line.decode("utf-8", "replace")
+                import re
+                match = re.search(r'"([^"]*)"\s*$', text)
+                if match:
+                    names.append(match.group(1))
+            return names
+
+    def list_inbox(self, criteria: str = "ALL", limit: int = 10, folder: str = "INBOX") -> list[dict]:
+        with self._connect() as conn:
+            self._select(conn, folder)
             try:
                 status, data = conn.search(None, criteria or "ALL")
             except imaplib.IMAP4.error as exc:
@@ -81,15 +99,15 @@ class IcloudMailClient:
                 })
             return items
 
-    def unread_count(self) -> int:
+    def unread_count(self, folder: str = "INBOX") -> int:
         with self._connect() as conn:
-            conn.select("INBOX")
+            self._select(conn, folder)
             _, data = conn.search(None, "UNSEEN")
             return len(data[0].split())
 
-    def read_email(self, seq: str) -> dict:
+    def read_email(self, seq: str, folder: str = "INBOX") -> dict:
         with self._connect() as conn:
-            conn.select("INBOX")
+            self._select(conn, folder)
             status, data = conn.fetch(seq.encode(), "(RFC822)")
             raw = b""
             for part in data:
@@ -111,13 +129,13 @@ class IcloudMailClient:
                 "body": body,
             }
 
-    def delete_emails(self, seqs: list[str]) -> dict:
+    def delete_emails(self, seqs: list[str], folder: str = "INBOX") -> dict:
         """Déplace des messages vers la corbeille iCloud (récupérable, comme l'app Mail).
 
         Si aucun dossier corbeille n'est trouvé, suppression définitive en secours.
         """
         with self._connect() as conn:
-            conn.select("INBOX")
+            self._select(conn, folder)
             trash = self._trash_folder(conn)
             for seq in seqs:
                 if trash:

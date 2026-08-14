@@ -10,16 +10,22 @@ class IcloudMailTool(BaseTool):
         "s'il mentionne EXPLICITEMENT Apple, iCloud ou sa boîte @icloud.com. "
         "Pour toute demande générique de type « mes emails » / « ma boîte mail », "
         "utilise TOUJOURS l'outil gmail en priorité. Actions : lister, compter, lire, "
-        "supprimer. La suppression iCloud déplace vers la corbeille (récupérable ~30 jours, "
-        "comme l'app Mail) — demande quand même une confirmation à l'utilisateur."
+        "supprimer, lister les dossiers. Le dossier Junk contient le SPAM : pour les "
+        "spams/pourriels, utilise folder=\"Junk\". La suppression iCloud déplace vers la "
+        "corbeille (récupérable ~30 jours, comme l'app Mail) — demande quand même une "
+        "confirmation à l'utilisateur."
     )
     parameters = {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["list", "unread", "read", "delete"],
-                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: déplacer vers la corbeille (après confirmation)",
+                "enum": ["list", "unread", "read", "delete", "folders"],
+                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: déplacer vers la corbeille (après confirmation) | folders: lister les dossiers disponibles",
+            },
+            "folder": {
+                "type": "string",
+                "description": "Dossier IMAP ciblé : INBOX (défaut), Junk (spam), Archive, Deleted Messages… Utilise folders pour la liste.",
             },
             "criteria": {
                 "type": "string",
@@ -42,21 +48,26 @@ class IcloudMailTool(BaseTool):
 
     def run(self, args: dict, user_id: int) -> dict:
         action = args.get("action")
+        folder = args.get("folder") or "INBOX"
         try:
             client = IcloudMailClient()
+            if action == "folders":
+                return {"folders": client.list_folders()}
             if action == "list":
-                items = client.list_inbox(args.get("criteria") or "ALL", int(args.get("limit") or 5))
-                return {"count": len(items), "messages": items}
+                items = client.list_inbox(
+                    args.get("criteria") or "ALL", int(args.get("limit") or 5), folder=folder
+                )
+                return {"count": len(items), "folder": folder, "messages": items}
             if action == "unread":
-                return {"unread": client.unread_count()}
+                return {"unread": client.unread_count(folder=folder)}
             if action == "read":
-                msg = client.read_email(args.get("message_id") or "")
+                msg = client.read_email(args.get("message_id") or "", folder=folder)
                 return msg
             if action == "delete":
                 ids = args.get("message_ids") or ([args["message_id"]] if args.get("message_id") else [])
                 if not ids:
                     return self._err("message_id (ou message_ids) manquant.")
-                return client.delete_emails(ids)
+                return client.delete_emails(ids, folder=folder)
             return self._err(f"Action inconnue : {action}")
         except IcloudMailError as exc:
             return self._err(str(exc))
