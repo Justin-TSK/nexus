@@ -21,6 +21,7 @@ from tools.notion import NotionTool
 from tools.perplexity import PerplexityTool
 from tools.registry import ToolRegistry
 from tools.spotify import SpotifyTool
+from tools.translate import TranslateTool
 from tools.weather import WeatherTool
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def build_registry() -> ToolRegistry:
         NotionTool(),
         PerplexityTool(),
         SpotifyTool(),
+        TranslateTool(),
         WeatherTool(),
     ]
     for tool in candidates:

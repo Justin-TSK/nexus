@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -63,11 +65,29 @@ async def _deny(update: Update) -> None:
         )
 
 
-async def _typing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_chat:
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action=ChatAction.TYPING
-        )
+@asynccontextmanager
+async def _typing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maintient l'indicateur « en train d'écrire… » jusqu'à la fin du traitement."""
+    chat = update.effective_chat
+    if chat is None:
+        yield
+        return
+    stop = asyncio.Event()
+
+    async def _pulse() -> None:
+        while not stop.is_set():
+            try:
+                await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+            except Exception:
+                return
+            await asyncio.sleep(4)
+
+    task = asyncio.create_task(_pulse())
+    try:
+        yield
+    finally:
+        stop.set()
+        task.cancel()
 
 
 # ── Commandes ────────────────────────────────────────────────────────
@@ -156,9 +176,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     agent: Agent = context.bot_data["agent"]
     user_id = update.effective_user.id
     text = update.message.text
-    await _typing(update, context)
     try:
-        reply = await agent.reply_to_text(user_id, text)
+        async with _typing(update, context):
+            reply = await agent.reply_to_text(user_id, text)
     except Exception:
         logger.exception("Erreur lors du traitement du texte")
         await update.message.reply_text("❌ Oups, une erreur est survenue. Réessaie.")
@@ -174,11 +194,11 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     agent: Agent = context.bot_data["agent"]
     user_id = update.effective_user.id
     voice = update.message.voice
-    await _typing(update, context)
     try:
-        file = await context.bot.get_file(voice.file_id)
-        audio_data, mime_type = await media.ensure_audio_for_gemini(context.application, file)
-        transcript, reply = await agent.handle_voice(user_id, audio_data, mime_type)
+        async with _typing(update, context):
+            file = await context.bot.get_file(voice.file_id)
+            audio_data, mime_type = await media.ensure_audio_for_gemini(context.application, file)
+            transcript, reply = await agent.handle_voice(user_id, audio_data, mime_type)
     except Exception:
         logger.exception("Erreur lors du traitement du vocal")
         await update.message.reply_text("❌ Impossible de traiter ce vocal. Réessaie.")
@@ -201,22 +221,24 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     if update.message.photo:
         suffix = ".jpg"
+        filename = "photo.jpg"
     else:
         filename = getattr(file_obj, "file_name", None) or "fichier"
         suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".bin"
     if media.file_kind(suffix) == "unsupported":
+        accepted = media.TEXT_SUFFIXES | media.BINARY_UPLOAD_SUFFIXES | media.OFFICE_SUFFIXES
         await update.message.reply_text(
             f"Format « {suffix} » non supporté pour l'instant. "
-            "Formats acceptés : " + ", ".join(sorted(media.TEXT_SUFFIXES | media.BINARY_UPLOAD_SUFFIXES))
+            "Formats acceptés : " + ", ".join(sorted(accepted))
         )
         return
 
-    await _typing(update, context)
     path = None
     try:
-        file = await context.bot.get_file(file_obj.file_id)
-        path = await media.download_to_temp(context.application, file)
-        summary = await agent.handle_document(user_id, str(path), filename)
+        async with _typing(update, context):
+            file = await context.bot.get_file(file_obj.file_id)
+            path = await media.download_to_temp(context.application, file)
+            summary = await agent.handle_document(user_id, str(path), filename)
     except Exception:
         logger.exception("Erreur lors du traitement du fichier")
         await update.message.reply_text("❌ Impossible de traiter ce fichier.")
