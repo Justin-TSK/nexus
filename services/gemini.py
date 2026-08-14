@@ -123,11 +123,11 @@ class GeminiService:
         path = Path(file_path)
         if path.suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}:
             return self._analyze_binary(path, prompt)
-        if path.suffix.lower() in {".pptx"}:
-            from services.media import extract_pptx_text
-            text = extract_pptx_text(path)
+        if path.suffix.lower() in {".pptx", ".docx"}:
+            from services.media import extract_pptx_text, extract_docx_text
+            text = extract_pptx_text(path) if path.suffix.lower() == ".pptx" else extract_docx_text(path)
             if text is None:
-                return "Impossible de lire ce fichier PowerPoint."
+                return "Impossible de lire ce fichier Office."
             if len(text) > MAX_FILE_CHARS:
                 text = text[:MAX_FILE_CHARS] + "\n… [contenu tronqué]"
             return self._extract_text(self.generate([prompt, text]))
@@ -144,7 +144,7 @@ class GeminiService:
 
     def _analyze_binary(self, path: Path, prompt: str) -> str:
         client = self._get_client()
-        uploaded = client.files.upload(path=str(path))
+        uploaded = client.files.upload(file=str(path))
         try:
             uploaded = self._wait_ready(uploaded)
             return self._extract_text(self.generate([uploaded, prompt]))

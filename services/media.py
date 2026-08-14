@@ -18,10 +18,11 @@ VOICE_SUFFIXES = {".oga", ".ogg", ".opus"}
 TEXT_SUFFIXES = {".txt", ".md", ".py", ".json", ".csv", ".yaml", ".yml", ".js", ".ts", ".html", ".css", ".java", ".c", ".h", ".cpp", ".rs", ".go"}
 # Extensions envoyées telles quelles à Gemini (pdf, images).
 BINARY_UPLOAD_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"}
-# Extensions dont le texte est extrait avant analyse (PowerPoint).
-OFFICE_SUFFIXES = {".pptx"}
+# Extensions dont le texte est extrait avant analyse (Office).
+OFFICE_SUFFIXES = {".pptx", ".docx"}
 
 _PPTX_TEXT_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def ffmpeg_available() -> bool:
@@ -105,5 +106,23 @@ def extract_pptx_text(path: str | Path) -> str | None:
                 if body:
                     out.append(f"--- Diapositive {slide_num} ---\n{body}")
             return "\n\n".join(out) or None
+    except (zipfile.BadZipFile, ET.ParseError, OSError):
+        return None
+
+
+def extract_docx_text(path: str | Path) -> str | None:
+    """Extrait le texte d'un .docx (archive zip/XML, paragraphes w:p)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if "word/document.xml" not in archive.namelist():
+                return None
+            root = ET.fromstring(archive.read("word/document.xml"))
+            out = []
+            for para in root.iter(f"{_DOCX_NS}p"):
+                texts = [t.text or "" for t in para.iter(f"{_DOCX_NS}t")]
+                line = "".join(texts).strip()
+                if line:
+                    out.append(line)
+            return "\n".join(out) or None
     except (zipfile.BadZipFile, ET.ParseError, OSError):
         return None
