@@ -236,17 +236,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if user_id in _last_start:
         prev_ts, prev_msg = _last_start[user_id]
         if now - prev_ts < _START_WINDOW:
-            # Double envoi du bouton Start : édite le menu existant au lieu d'en envoyer un 2e.
-            logger.info("cmd_start: doublon ignoré (%.1fs), édition du menu %s", now - prev_ts, prev_msg)
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=update.effective_chat.id,
-                    message_id=prev_msg,
-                    text=_START_TEXT(update),
-                    reply_markup=MENU_KEYBOARD,
-                )
-            except Exception:
-                pass
+            # Double envoi du bouton Start : le menu vient d'être affiché, on ignore.
+            logger.info("cmd_start: doublon ignoré (%.1fs, menu %s)", now - prev_ts, prev_msg)
             return
     user = update.effective_user
     msg = await update.message.reply_text(
