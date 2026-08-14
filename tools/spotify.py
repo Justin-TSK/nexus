@@ -1,3 +1,4 @@
+import logging
 import threading
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from config import settings
 from tools.registry import BaseTool
+
+logger = logging.getLogger(__name__)
 
 SCOPES = (
     "user-read-playback-state "
@@ -61,8 +64,8 @@ class SpotifyTool(BaseTool):
         "morceau en cours, jouer/pause/musique suivante, chercher un titre, ajouter à la "
         "file, lister ses playlists. IMPORTANT — appareils : si l'utilisateur nomme un "
         "appareil précis (« sur mon téléphone », « sur mon iPhone », « sur le Mac »), "
-        "appelle D'ABORD l'action devices pour récupérer les ids, puis passe device_id. "
-        "Sinon l'appareil actif est utilisé, sinon le premier disponible."
+        "passe le NOM de l'appareil dans device_name (ex : device_name=\"iPhone\") — "
+        "jamais un id. Sinon l'appareil actif est utilisé, sinon le premier disponible."
     )
     parameters = {
         "type": "object",
@@ -81,6 +84,10 @@ class SpotifyTool(BaseTool):
                 "type": "string",
                 "description": "ID de l'appareil Spotify ciblé (retourné par l'action devices). Optionnel : sinon l'appareil actif ou le premier disponible est choisi.",
             },
+            "device_name": {
+                "type": "string",
+                "description": "NOM de l'appareil Spotify ciblé (ex : « iPhone », « téléphone », « Mac »). Plus fiable que device_id : le code cherchera l'appareil correspondant. Optionnel.",
+            },
             "limit": {"type": "integer", "description": "Nombre max de résultats (défaut 5)."},
         },
         "required": ["action"],
@@ -91,11 +98,21 @@ class SpotifyTool(BaseTool):
         return bool(settings.SPOTIFY_CLIENT_ID and settings.SPOTIFY_CLIENT_SECRET)
 
     @staticmethod
-    def _pick_device(sp: Spotify) -> str | None:
+    def _pick_device(sp: Spotify, device_name: str = "", device_id: str = "") -> str | None:
         try:
             devices = sp.devices().get("devices", [])
         except SpotifyException:
             return None
+        if device_id:
+            return device_id
+        if device_name:
+            wanted = device_name.lower()
+            match = next(
+                (d["id"] for d in devices if wanted in d.get("name", "").lower()),
+                None,
+            )
+            if match:
+                return match
         active = next((d["id"] for d in devices if d.get("is_active")), None)
         return active or (devices[0]["id"] if devices else None)
 
@@ -135,12 +152,16 @@ class SpotifyTool(BaseTool):
                     if not tracks:
                         return self._err(f"Aucun résultat pour « {args['query']} ».")
                     uri = tracks[0]["uri"]
-                device_id = args.get("device_id") or self._pick_device(sp)
+                device_id = self._pick_device(
+                    sp, device_name=args.get("device_name") or "", device_id=args.get("device_id") or ""
+                )
                 if not device_id:
                     return self._err(
                         "Aucun appareil Spotify actif détecté. Ouvre l'appli Spotify "
                         "(téléphone ou ordinateur), puis relance la musique."
                     )
+                device_label = args.get("device_name") or args.get("device_id") or device_id
+                logger.info("Lecture Spotify ciblée sur : %s", device_label)
                 if not uri:
                     sp.start_playback(device_id=device_id)
                     return {"message": "Lecture relancée."}
