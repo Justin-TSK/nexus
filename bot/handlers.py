@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 from config import settings
 from core.agent import Agent, PendingConfirmation
 from services import media
+from services.proactive import build_digest_text
 from tools.registry import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,16 @@ HELP_TEXT = (
     "• /help — cette aide\n"
 )
 
+
+
+MENU_BUTTONS = [
+    [InlineKeyboardButton("📅 Digest du jour", callback_data="menu:digest")],
+    [InlineKeyboardButton("🔧 Intégrations", callback_data="menu:tools")],
+    [InlineKeyboardButton("🌐 Traduire", callback_data="menu:translate")],
+    [InlineKeyboardButton("🧹 Effacer la mémoire", callback_data="menu:reset")],
+    [InlineKeyboardButton("❓ Aide", callback_data="menu:help")],
+]
+MENU_KEYBOARD = InlineKeyboardMarkup(MENU_BUTTONS)
 
 
 def _split_long(text: str, limit: int = 4000) -> list[str]:
@@ -117,13 +128,20 @@ async def _maybe_confirmation(update: Update, reply) -> bool:
 
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Gère les boutons de confirmation (confirm/cancel)."""
+    """Gère les boutons : confirmation (confirm/cancel) et menu principal (menu:)."""
     query = update.callback_query
     if query is None or not query.data:
         return
     await query.answer()
+    if settings.allowed_user_ids and query.from_user.id not in settings.allowed_user_ids:
+        return
+
     action, _, token = query.data.partition(":")
     registry = context.bot_data["registry"]
+
+    if action == "menu":
+        await _menu_action(query, context)
+        return
 
     if action == "cancel":
         BaseTool.discard(token)
@@ -182,8 +200,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     first = user.first_name if user else ""
     await update.message.reply_text(
         f"Salut {first} 👋 Je suis ton agent d'études.\n"
-        "Envoie-moi un message, un vocal ou un fichier. Tape /help pour les commandes."
+        "Choisis une action ci-dessous, ou envoie-moi simplement un message, "
+        "un vocal ou un fichier.",
+        reply_markup=MENU_KEYBOARD,
     )
+
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        await _deny(update)
+        return
+    await update.message.reply_text("Voici le menu :", reply_markup=MENU_KEYBOARD)
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -193,11 +220,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
 
-async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _authorized(update):
-        await _deny(update)
-        return
-    registry = context.bot_data["registry"]
+def _tools_text(registry) -> str:
     labels = {
         "gmail": "📧 Gmail",
         "icloud_mail": "🍎 iCloud Mail",
@@ -210,12 +233,46 @@ async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "translate": "🌐 DeepL",
     }
     if not registry.names:
-        text = "Aucune intégration active. Renseigne le .env puis redémarre."
-    else:
-        text = "Intégrations actives :\n" + "\n".join(
-            "• " + labels.get(n, n) for n in registry.names
+        return "Aucune intégration active. Renseigne le .env puis redémarre."
+    return "Intégrations actives :\n" + "\n".join(
+        "• " + labels.get(n, n) for n in registry.names
+    )
+
+
+async def _menu_action(query, context) -> None:
+    """Gère les boutons du menu principal (/start, /menu)."""
+    sub = query.data.partition(":")[2]
+    if sub == "digest":
+        await query.edit_message_text("⏳ Génération du digest…")
+        try:
+            text = await asyncio.to_thread(build_digest_text)
+        except Exception:
+            logger.exception("Digest depuis le menu")
+            text = "❌ Impossible de générer le digest."
+        for chunk in _split_long(text):
+            await query.edit_message_text(chunk)
+    elif sub == "tools":
+        await query.edit_message_text(_tools_text(context.bot_data["registry"]))
+    elif sub == "translate":
+        await query.edit_message_text(
+            "🌐 *Traduire*\n\n"
+            "Envoie : `/traduire <texte> [langue]`\n"
+            "Langues : FR, EN, ES, DE, IT, PT.\n\n"
+            "Ex : `/traduire Bonjour comment ça va ? EN`",
+            parse_mode="Markdown",
         )
-    await update.message.reply_text(text)
+    elif sub == "reset":
+        context.bot_data["agent"].reset(query.from_user.id)
+        await query.edit_message_text("🧹 Mémoire de la conversation effacée.")
+    elif sub == "help":
+        await query.edit_message_text(HELP_TEXT, parse_mode="Markdown")
+
+
+async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        await _deny(update)
+        return
+    await update.message.reply_text(_tools_text(context.bot_data["registry"]))
 
 
 async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

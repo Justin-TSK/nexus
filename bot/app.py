@@ -83,6 +83,7 @@ def build_application() -> Application:
     application.job_queue.run_once(_notify_startup, when=3)
 
     application.add_handler(CommandHandler("start", handlers.cmd_start))
+    application.add_handler(CommandHandler("menu", handlers.cmd_menu))
     application.add_handler(CommandHandler("help", handlers.cmd_help))
     application.add_handler(CommandHandler("tools", handlers.cmd_tools))
     application.add_handler(CommandHandler("reset", handlers.cmd_reset))
