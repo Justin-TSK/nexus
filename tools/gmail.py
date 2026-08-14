@@ -94,9 +94,23 @@ class GmailTool(BaseTool):
         if action == "read":
             return self._read(client, args.get("message_id") or "")
         if action == "send":
+            if not args.get("_skip_confirm"):
+                return self.defer(
+                    self.name,
+                    args,
+                    user_id,
+                    f"Envoyer un mail à « {args.get('to')} » — Objet : « {args.get('subject')} ».",
+                )
             return self._send(client, args.get("to"), args.get("subject"), args.get("body"))
         if action == "delete":
             ids = args.get("message_ids") or ([args["message_id"]] if args.get("message_id") else [])
+            if not ids:
+                return self._err("message_id (ou message_ids) manquant.")
+            if not args.get("_skip_confirm"):
+                return self.defer(
+                    self.name, args, user_id,
+                    f"Déplacer {len(ids)} mail(s) Gmail vers la corbeille.",
+                )
             return self._delete(client, ids)
         return self._err(f"Action inconnue : {action}")
 

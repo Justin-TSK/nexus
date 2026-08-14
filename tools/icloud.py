@@ -68,6 +68,11 @@ class IcloudMailTool(BaseTool):
                 ids = args.get("message_ids") or ([args["message_id"]] if args.get("message_id") else [])
                 if not ids:
                     return self._err("message_id (ou message_ids) manquant.")
+                if not args.get("_skip_confirm"):
+                    return self.defer(
+                        self.name, args, user_id,
+                        f"Supprimer définitivement {len(ids)} mail(s) iCloud (irréversible).",
+                    )
                 return client.delete_emails(ids, folder=folder)
             return self._err(f"Action inconnue : {action}")
         except IcloudMailError as exc:

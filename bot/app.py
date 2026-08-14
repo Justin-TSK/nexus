@@ -1,8 +1,11 @@
 import logging
+from datetime import time as dtime
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -11,6 +14,7 @@ from telegram.ext import (
 from bot import handlers
 from config import settings
 from core.agent import Agent
+from services import proactive
 from services.deepl import DeeplService
 from services.gemini import GeminiService
 from tools.calendar import CalendarTool
@@ -54,11 +58,21 @@ def build_application() -> Application:
     application.bot_data["agent"] = agent
     application.bot_data["registry"] = registry
 
+    # ── Tâches proactives (JobQueue) ────────────────────────────────
+    tz = ZoneInfo(settings.CALENDAR_TIMEZONE)
+    application.job_queue.run_daily(proactive.send_digest, dtime(hour=8, minute=0, tzinfo=tz))
+    application.job_queue.run_repeating(
+        proactive.check_reminders,
+        interval=proactive.CHECK_INTERVAL_SEC,
+        first=60,
+    )
+
     application.add_handler(CommandHandler("start", handlers.cmd_start))
     application.add_handler(CommandHandler("help", handlers.cmd_help))
     application.add_handler(CommandHandler("tools", handlers.cmd_tools))
     application.add_handler(CommandHandler("reset", handlers.cmd_reset))
     application.add_handler(CommandHandler("traduire", handlers.cmd_translate))
+    application.add_handler(CommandHandler("digest", handlers.cmd_digest))
 
     application.add_handler(MessageHandler(filters.VOICE, handlers.on_voice))
     application.add_handler(
@@ -69,6 +83,7 @@ def build_application() -> Application:
     )
 
     application.add_error_handler(handlers.on_error)
+    application.add_handler(CallbackQueryHandler(handlers.on_callback))
     logger.info(
         "Application Telegram construite : outils actifs = %s",
         ", ".join(registry.names) if registry.names else "aucun",

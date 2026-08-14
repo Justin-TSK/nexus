@@ -1,17 +1,26 @@
 import asyncio
-from collections import defaultdict
+from dataclasses import dataclass
 
 from services.deepl import DeeplService
 from services.gemini import GeminiService
+from services.store import Store
 from tools.registry import ToolRegistry
 
 MAX_TURNS = 20          # paires (utilisateur + agent) gardées en mémoire par utilisateur
 MAX_TOOL_ROUNDS = 5     # appels d'outils maximum par tour de conversation
 
 
+@dataclass
+class PendingConfirmation:
+    """Action différée en attente d'un « oui » explicite de l'utilisateur."""
+
+    token: str
+    details: str
+
+
 class Agent:
-    """Orchestrateur : garde le contexte de chaque utilisateur, verrouille les
-    messages (anti-flood) et exécute les appels d'outils demandés par Gemini."""
+    """Orchestrateur : garde le contexte de chaque utilisateur (persisté dans SQLite),
+    verrouille les messages (anti-flood) et exécute les appels d'outils demandés par Gemini."""
 
     def __init__(
         self,
@@ -22,7 +31,7 @@ class Agent:
         self.gemini = gemini
         self.deepl = deepl
         self.registry = registry
-        self._history: dict[int, list[dict]] = defaultdict(list)
+        self.store = Store.get()
         self._locks: dict[int, asyncio.Lock] = {}
 
     def _lock(self, user_id: int) -> asyncio.Lock:
@@ -31,19 +40,16 @@ class Agent:
         return self._locks[user_id]
 
     def reset(self, user_id: int) -> None:
-        self._history[user_id] = []
+        self.store.clear_history(user_id)
 
     def _remember(self, user_id: int, user_msg: str, agent_reply: str) -> None:
-        history = self._history[user_id]
-        history.append({"role": "user", "parts": [user_msg]})
-        history.append({"role": "model", "parts": [agent_reply]})
-        if len(history) > MAX_TURNS * 2:
-            del history[: len(history) - MAX_TURNS * 2]
+        self.store.append_history(user_id, "user", user_msg)
+        self.store.append_history(user_id, "model", agent_reply)
 
     # ── Boucle de fonction-calling ──────────────────────────────────
     async def _chat_with_tools(self, user_id: int, prompt: str) -> str:
         tools = self.registry.gemini_tool()
-        contents = self._history[user_id] + [{"role": "user", "parts": [prompt]}]
+        contents = self.store.load_history(user_id, MAX_TURNS) + [{"role": "user", "parts": [prompt]}]
 
         for _ in range(MAX_TOOL_ROUNDS):
             response = await asyncio.to_thread(self.gemini.generate, contents, tools)
@@ -64,6 +70,10 @@ class Agent:
             user_parts = []
             for c in calls:
                 result = await self.registry.call(c.name, c.args or {}, user_id)
+                if result.get("requires_confirmation"):
+                    return PendingConfirmation(
+                        token=result["token"], details=result.get("details", "Confirmer cette action ?")
+                    )
                 user_parts.append({"function_response": {"name": c.name, "response": result}})
 
             contents = contents + [
@@ -74,20 +84,22 @@ class Agent:
         return "Trop d'appels d'outils d'affilée, essaie de reformuler."
 
     # ── Points d'entrée ─────────────────────────────────────────────
-    async def reply_to_text(self, user_id: int, text: str) -> str:
+    async def reply_to_text(self, user_id: int, text: str) -> str | PendingConfirmation:
         async with self._lock(user_id):
             reply = await self._chat_with_tools(user_id, text)
-            self._remember(user_id, text, reply)
+            if isinstance(reply, str):
+                self._remember(user_id, text, reply)
             return reply
 
-    async def handle_voice(self, user_id: int, audio_data: bytes, mime_type: str) -> tuple[str, str]:
+    async def handle_voice(self, user_id: int, audio_data: bytes, mime_type: str) -> tuple[str, str | PendingConfirmation]:
         """Transcrit le vocal puis répond. Retourne (transcription, réponse)."""
         async with self._lock(user_id):
             transcript = await asyncio.to_thread(
                 self.gemini.transcribe_audio, audio_data, mime_type
             )
             reply = await self._chat_with_tools(user_id, transcript)
-            self._remember(user_id, transcript, reply)
+            if isinstance(reply, str):
+                self._remember(user_id, transcript, reply)
             return transcript, reply
 
     async def handle_document(self, user_id: int, file_path: str, filename: str) -> str:

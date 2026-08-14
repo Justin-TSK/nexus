@@ -3,14 +3,15 @@ import logging
 import re
 from contextlib import asynccontextmanager
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.helpers import escape_markdown
 from telegram.ext import ContextTypes
 
 from config import settings
-from core.agent import Agent
+from core.agent import Agent, PendingConfirmation
 from services import media
+from tools.registry import BaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ HELP_TEXT = (
     "je le lis et je t'en fais un résumé ou de l'aide.\n\n"
     "⚙️ *Commandes*\n"
     "• /traduire <texte> [FR|EN|ES] — traduction via DeepL\n"
+    "• /digest — point du jour (météo, agenda, mails)\n"
     "• /tools — liste les intégrations actives (Gmail, Notion, Spotify…)\n"
     "• /reset — efface la mémoire de la conversation\n"
     "• /help — cette aide\n"
@@ -56,7 +58,12 @@ def _authorized(update: Update) -> bool:
     if not allowed:
         return True
     user = update.effective_user
-    return user is not None and user.id in allowed
+    if user is None or user.id not in allowed:
+        return False
+    if update.effective_chat:
+        from services.proactive import save_chat
+        save_chat(user.id, update.effective_chat.id)
+    return True
 
 
 def _clean_markdown(text: str) -> str:
@@ -74,6 +81,64 @@ async def _send(update: Update, text: str) -> None:
     """Nettoie les symboles markdown, découpe et envoie la réponse."""
     for chunk in _split_long(_clean_markdown(text)):
         await update.message.reply_text(chunk)
+
+
+def _confirmation_keyboard(token: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Confirmer", callback_data=f"confirm:{token}"),
+                InlineKeyboardButton("❌ Annuler", callback_data=f"cancel:{token}"),
+            ]
+        ]
+    )
+
+
+def _format_tool_result(result: dict) -> str:
+    """Transforme le dict retourné par un outil en texte pour l'utilisateur."""
+    if result.get("error"):
+        return "❌ " + str(result["error"])
+    parts = [str(result.get("message") or "✅ Fait.")]
+    for key in ("summary", "start", "subject", "count", "link", "deleted"):
+        if key in result and key != "message":
+            parts.append(f"{key} : {result[key]}")
+    return "\n".join(parts)
+
+
+async def _maybe_confirmation(update: Update, reply) -> bool:
+    """Si la réponse exige une confirmation, envoie les boutons et renvoie True."""
+    if not isinstance(reply, PendingConfirmation):
+        return False
+    await update.message.reply_text(
+        f"⚠️ {reply.details}\n\nConfirmer ?",
+        reply_markup=_confirmation_keyboard(reply.token),
+    )
+    return True
+
+
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gère les boutons de confirmation (confirm/cancel)."""
+    query = update.callback_query
+    if query is None or not query.data:
+        return
+    await query.answer()
+    action, _, token = query.data.partition(":")
+    registry = context.bot_data["registry"]
+
+    if action == "cancel":
+        BaseTool.discard(token)
+        await query.edit_message_text("Annulé ✅")
+        return
+
+    pending = BaseTool.resolve(token)
+    if pending is None:
+        await query.edit_message_text("⏳ Cette demande a expiré ou a déjà été traitée.")
+        return
+
+    args = dict(pending["args"])
+    args["_skip_confirm"] = True
+    result = await registry.call(pending["tool"], args, pending["user_id"])
+    await query.edit_message_text(_format_tool_result(result))
 
 
 async def _deny(update: Update) -> None:
@@ -142,6 +207,7 @@ async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "perplexity": "🔎 Perplexity",
         "weather": "🌤️ Météo",
         "contacts": "👤 Contacts",
+        "translate": "🌐 DeepL",
     }
     if not registry.names:
         text = "Aucune intégration active. Renseigne le .env puis redémarre."
@@ -150,6 +216,22 @@ async def cmd_tools(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "• " + labels.get(n, n) for n in registry.names
         )
     await update.message.reply_text(text)
+
+
+async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        await _deny(update)
+        return
+    from services.proactive import build_digest_text
+    try:
+        async with _typing(update, context):
+            message = await asyncio.to_thread(build_digest_text)
+    except Exception:
+        logger.exception("Erreur lors du digest manuel")
+        await update.message.reply_text("❌ Impossible de générer le digest.")
+        return
+    for chunk in _split_long(message):
+        await update.message.reply_text(chunk)
 
 
 
@@ -201,6 +283,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Erreur lors du traitement du texte")
         await update.message.reply_text("❌ Oups, une erreur est survenue. Réessaie.")
         return
+    if await _maybe_confirmation(update, reply):
+        return
     await _send(update, reply)
 
 
@@ -219,6 +303,8 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         logger.exception("Erreur lors du traitement du vocal")
         await update.message.reply_text("❌ Impossible de traiter ce vocal. Réessaie.")
+        return
+    if await _maybe_confirmation(update, reply):
         return
     await _send(update, reply)
 

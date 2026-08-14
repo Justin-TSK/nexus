@@ -25,6 +25,7 @@ class Settings:
 
     TEMP_DIR: str = os.getenv("TEMP_DIR", "tmp")
     LOG_DIR: str = os.getenv("LOG_DIR", "logs")
+    DATA_DIR: str = os.getenv("DATA_DIR", "data")
 
     # ── Notion ──────────────────────────────────────────────────────
     NOTION_TOKEN: str = os.getenv("NOTION_TOKEN", "")

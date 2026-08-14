@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import secrets
+import threading
+import time
 from typing import Any
 
 from google.genai import types
@@ -44,6 +47,35 @@ class BaseTool:
     name: str = ""
     description: str = ""
     parameters: dict = {}
+
+    # Actions en attente de confirmation (token → détails).
+    _pending: dict[str, dict] = {}
+    _pending_lock = threading.Lock()
+
+    @classmethod
+    def defer(cls, tool_name: str, args: dict, user_id: int, details: str) -> dict:
+        """Place une action en attente de confirmation et renvoie le jeton."""
+        token = secrets.token_urlsafe(10)
+        with cls._pending_lock:
+            cls._pending[token] = {
+                "tool": tool_name,
+                "args": dict(args),
+                "user_id": user_id,
+                "details": details,
+                "created": time.monotonic(),
+            }
+        return {"requires_confirmation": True, "token": token, "details": details}
+
+    @classmethod
+    def resolve(cls, token: str) -> dict | None:
+        """Récupère (et retire) une action confirmée par son jeton."""
+        with cls._pending_lock:
+            return cls._pending.pop(token, None)
+
+    @classmethod
+    def discard(cls, token: str) -> None:
+        with cls._pending_lock:
+            cls._pending.pop(token, None)
 
     @property
     def declaration(self) -> types.FunctionDeclaration:
