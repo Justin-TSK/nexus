@@ -59,8 +59,10 @@ class SpotifyTool(BaseTool):
         "Musique Spotify de l'utilisateur. Utilise-le pour la musique de fond, des "
         "playlists de concentration (Lo-fi, Deep Focus) quand il travaille ou révise, le "
         "morceau en cours, jouer/pause/musique suivante, chercher un titre, ajouter à la "
-        "file, lister ses playlists. Le contrôle de lecture nécessite un appareil Spotify "
-        "actif (téléphone, ordinateur…)."
+        "file, lister ses playlists. IMPORTANT — appareils : si l'utilisateur nomme un "
+        "appareil précis (« sur mon téléphone », « sur mon iPhone », « sur le Mac »), "
+        "appelle D'ABORD l'action devices pour récupérer les ids, puis passe device_id. "
+        "Sinon l'appareil actif est utilisé, sinon le premier disponible."
     )
     parameters = {
         "type": "object",
