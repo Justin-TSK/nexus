@@ -13,6 +13,9 @@ class Settings:
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     TRANSCRIPTION_LANG: str = os.getenv("TRANSCRIPTION_LANG", "fr")
 
+    # Profil de l'utilisateur (injecté dans le prompt pour que le bot le connaisse).
+    USER_PROFILE: str = os.getenv("USER_PROFILE", "")
+
     BOT_MODE: str = os.getenv("BOT_MODE", "polling").lower()
     WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
     WEBHOOK_PORT: int = int(os.getenv("WEBHOOK_PORT", "8443"))
