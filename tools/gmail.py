@@ -71,6 +71,11 @@ class GmailTool(BaseTool):
                 "type": "string",
                 "description": "ID du message à lire (retourné par list/search).",
             },
+            "message_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Liste d'IDs pour supprimer plusieurs messages EN UN SEUL appel (au lieu d'un appel par mail).",
+            },
             "max": {"type": "integer", "description": "Nombre maximum de résultats (défaut 5, max 20)."},
             "to": {"type": "string", "description": "Destinataire pour send."},
             "subject": {"type": "string", "description": "Objet du mail pour send."},
@@ -91,7 +96,8 @@ class GmailTool(BaseTool):
         if action == "send":
             return self._send(client, args.get("to"), args.get("subject"), args.get("body"))
         if action == "delete":
-            return self._delete(client, args.get("message_id") or "")
+            ids = args.get("message_ids") or ([args["message_id"]] if args.get("message_id") else [])
+            return self._delete(client, ids)
         return self._err(f"Action inconnue : {action}")
 
     @staticmethod
@@ -144,8 +150,10 @@ class GmailTool(BaseTool):
         return {"message": "Mail envoyé.", "id": sent.get("id")}
 
     @staticmethod
-    def _delete(client, message_id: str) -> dict:
-        if not message_id:
-            return {"error": "message_id manquant."}
-        client.users().messages().trash(userId="me", id=message_id).execute()
-        return {"message": "Mail déplacé vers la corbeille Gmail.", "id": message_id}
+    def _delete(client, message_ids: list) -> dict:
+        ids = [i for i in message_ids if i]
+        if not ids:
+            return {"error": "message_id (ou message_ids) manquant."}
+        for mid in ids:
+            client.users().messages().trash(userId="me", id=mid).execute()
+        return {"message": f"{len(ids)} mail(s) déplacé(s) vers la corbeille Gmail.", "ids": ids}

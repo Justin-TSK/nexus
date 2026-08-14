@@ -26,7 +26,12 @@ class IcloudMailTool(BaseTool):
                 "description": "Critère IMAP (ex: 'UNSEEN', 'FROM \"prof\"', 'SINCE 01-Jan-2026'). Défaut ALL.",
             },
             "limit": {"type": "integer", "description": "Nombre max de résultats (défaut 5)."},
-            "message_id": {"type": "string", "description": "ID du message à lire (retourné par list)."},
+            "message_id": {"type": "string", "description": "ID du message à lire ou supprimer (retourné par list)."},
+            "message_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Liste d'IDs pour supprimer plusieurs messages EN UN SEUL appel (au lieu d'un appel par mail).",
+            },
         },
         "required": ["action"],
     }
@@ -48,10 +53,10 @@ class IcloudMailTool(BaseTool):
                 msg = client.read_email(args.get("message_id") or "")
                 return msg
             if action == "delete":
-                seq = args.get("message_id") or ""
-                if not seq:
-                    return self._err("message_id manquant.")
-                return client.delete_email(seq)
+                ids = args.get("message_ids") or ([args["message_id"]] if args.get("message_id") else [])
+                if not ids:
+                    return self._err("message_id (ou message_ids) manquant.")
+                return client.delete_emails(ids)
             return self._err(f"Action inconnue : {action}")
         except IcloudMailError as exc:
             return self._err(str(exc))
