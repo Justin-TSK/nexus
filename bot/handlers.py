@@ -183,7 +183,6 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Erreur lors du traitement du vocal")
         await update.message.reply_text("❌ Impossible de traiter ce vocal. Réessaie.")
         return
-    await update.message.reply_text(f"📝 *Transcription* :\n{escape_markdown(transcript)}", parse_mode="Markdown")
     for chunk in _split_long(reply):
         await update.message.reply_text(chunk)
 
