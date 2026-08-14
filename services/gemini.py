@@ -1,3 +1,4 @@
+import logging
 import time
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from google import genai
 from google.genai import types
 
 from config import settings
+
+logger = logging.getLogger("services.gemini")
 
 MAX_FILE_CHARS = 60_000
 
@@ -152,9 +155,23 @@ class GeminiService:
                 ".xlsx": media.extract_xlsx_text,
                 ".ods": media.extract_ods_text,
             }
+            with open(path, "rb") as fh:
+                magic = fh.read(8)
+            if magic[:4] == b"\xd0\xcf\x11\xe0":
+                return (
+                    f"« {filename} » ressemble à un ancien fichier .doc renommé en .docx "
+                    "(ou un fichier corrompu). Converti-le en vrai .docx ou .pdf "
+                    "(via Google Docs ou Word) puis renvoie-le."
+                )
+            if magic[:4] == b"%PDF":
+                return f"« {filename} » est en réalité un PDF déguisé en .docx. Renomme-le en .pdf et renvoie-le."
             text = extractors[path.suffix.lower()](path)
             if text is None:
-                return "Impossible de lire ce fichier Office."
+                logger.warning("Extraction Office échouée : %s (magic=%r)", filename, magic[:4])
+                return (
+                    f"Impossible de lire « {filename} » : ce n'est pas un fichier "
+                    ".docx/.pptx/.xlsx valide (corrompu ou autre format renommé)."
+                )
             if len(text) > MAX_FILE_CHARS:
                 text = text[:MAX_FILE_CHARS] + "\n… [contenu tronqué]"
             return self._extract_text(self.generate([prompt, text]))

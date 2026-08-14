@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import shutil
 import subprocess
@@ -11,6 +12,8 @@ from telegram import File
 from telegram.ext import Application
 
 from config import settings
+
+logger = logging.getLogger("services.media")
 
 # Types d'audio Telegram (voix) — OGG/Opus n'est pas fiable pour Gemini.
 VOICE_SUFFIXES = {".oga", ".ogg", ".opus"}
@@ -118,6 +121,7 @@ def extract_docx_text(path: str | Path) -> str | None:
     try:
         with zipfile.ZipFile(path) as archive:
             if "word/document.xml" not in archive.namelist():
+                logger.warning("docx : pas de word/document.xml dans %s", path)
                 return None
             root = ET.fromstring(archive.read("word/document.xml"))
             out = []
@@ -127,7 +131,11 @@ def extract_docx_text(path: str | Path) -> str | None:
                 if line:
                     out.append(line)
             return "\n".join(out) or None
-    except (zipfile.BadZipFile, ET.ParseError, OSError):
+    except zipfile.BadZipFile:
+        logger.warning("docx : fichier non-zip (%s)", path)
+        return None
+    except (ET.ParseError, OSError) as exc:
+        logger.warning("docx : %s sur %s", type(exc).__name__, path)
         return None
 
 
