@@ -112,18 +112,43 @@ class IcloudMailClient:
             }
 
     def delete_emails(self, seqs: list[str]) -> dict:
-        """Supprime définitivement plusieurs messages (\\Deleted + expunge, irréversible)."""
+        """Déplace des messages vers la corbeille iCloud (récupérable, comme l'app Mail).
+
+        Si aucun dossier corbeille n'est trouvé, suppression définitive en secours.
+        """
         with self._connect() as conn:
             conn.select("INBOX")
+            trash = self._trash_folder(conn)
             for seq in seqs:
+                if trash:
+                    conn.copy(seq.encode(), trash)
                 status, _ = conn.store(seq.encode(), "+FLAGS", "\\Deleted")
                 if status != "OK":
                     raise IcloudMailError(f"Impossible de marquer le message {seq} comme supprimé.")
             conn.expunge()
-        return {"deleted": seqs, "count": len(seqs)}
+        return {
+            "deleted": seqs,
+            "count": len(seqs),
+            "moved_to_trash": trash is not None,
+        }
+
+    @staticmethod
+    def _trash_folder(conn: imaplib.IMAP4_SSL) -> str | None:
+        """Retourne le nom du dossier corbeille si présent (ex: « Deleted Messages »)."""
+        status, data = conn.list()
+        if status != "OK":
+            return None
+        for line in data:
+            text = line.decode("utf-8", "replace")
+            import re
+            match = re.search(r'"([^"]*)"\s*$', text)
+            name = match.group(1) if match else ""
+            if name.lower() in {"deleted messages", "trash", "corbeille", "messages supprimés"}:
+                return name
+        return None
 
     def delete_email(self, seq: str) -> dict:
-        """Supprime définitivement un message (irréversible)."""
+        """Déplace un message vers la corbeille (récupérable)."""
         return self.delete_emails([seq])
 
     @staticmethod

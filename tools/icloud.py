@@ -10,8 +10,8 @@ class IcloudMailTool(BaseTool):
         "s'il mentionne EXPLICITEMENT Apple, iCloud ou sa boîte @icloud.com. "
         "Pour toute demande générique de type « mes emails » / « ma boîte mail », "
         "utilise TOUJOURS l'outil gmail en priorité. Actions : lister, compter, lire, "
-        "supprimer. ATTENTION : la suppression iCloud est DÉFINITIVE et irréversible — "
-        "demande toujours une confirmation explicite à l'utilisateur avant de supprimer."
+        "supprimer. La suppression iCloud déplace vers la corbeille (récupérable ~30 jours, "
+        "comme l'app Mail) — demande quand même une confirmation à l'utilisateur."
     )
     parameters = {
         "type": "object",
@@ -19,7 +19,7 @@ class IcloudMailTool(BaseTool):
             "action": {
                 "type": "string",
                 "enum": ["list", "unread", "read", "delete"],
-                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: supprimer définitivement un message (après confirmation)",
+                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: déplacer vers la corbeille (après confirmation)",
             },
             "criteria": {
                 "type": "string",
