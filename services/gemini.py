@@ -167,6 +167,13 @@ class GeminiService:
                 return f"« {filename} » est en réalité un PDF déguisé en .docx. Renomme-le en .pdf et renvoie-le."
             text = extractors[path.suffix.lower()](path)
             if text is None:
+                image = media.extract_largest_image(path, path.suffix.lower())
+                if image is not None:
+                    logger.info("Office sans texte → analyse de l'image embarquée (%s)", image.name)
+                    try:
+                        return self._analyze_binary(image, prompt)
+                    finally:
+                        media.async_cleanup(image)
                 members = []
                 try:
                     import zipfile

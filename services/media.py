@@ -212,3 +212,30 @@ def extract_ods_text(path: str | Path) -> str | None:
             return "\n\n".join(out) or None
     except (zipfile.BadZipFile, ET.ParseError, OSError):
         return None
+
+
+def extract_largest_image(path: str | Path, suffix: str) -> Path | None:
+    """Extrait la plus grande image embarquée d'un .docx/.pptx vers tmp/.
+
+    Retourne le chemin du fichier temporaire (à nettoyer par l'appelant),
+    ou None si le fichier ne contient aucune image exploitable.
+    """
+    media_dir = "word/media/" if suffix == ".docx" else "ppt/media/"
+    try:
+        with zipfile.ZipFile(path) as archive:
+            candidates = [
+                n
+                for n in archive.namelist()
+                if n.startswith(media_dir)
+                and n.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"))
+            ]
+            if not candidates:
+                return None
+            best = max(candidates, key=lambda n: archive.getinfo(n).file_size)
+            out = Path(settings.TEMP_DIR) / f"{uuid.uuid4().hex}{Path(best).suffix.lower()}"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(best) as src, open(out, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            return out
+    except (zipfile.BadZipFile, OSError):
+        return None
