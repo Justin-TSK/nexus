@@ -106,9 +106,12 @@ class GeminiService:
 
     def _extract_text(self, response: types.GenerateContentResponse) -> str:
         try:
-            parts = response.candidates[0].content.parts
+            content = response.candidates[0].content
         except (IndexError, AttributeError):
             return ""
+        if content is None:
+            return ""
+        parts = content.parts or []
         return "".join(p.text for p in parts if p.text).strip()
 
     # ── Conversation ────────────────────────────────────────────────

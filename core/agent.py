@@ -47,11 +47,13 @@ class Agent:
 
         for _ in range(MAX_TOOL_ROUNDS):
             response = await asyncio.to_thread(self.gemini.generate, contents, tools)
-            parts = []
             try:
-                parts = response.candidates[0].content.parts
+                content = response.candidates[0].content
             except (IndexError, AttributeError):
                 break
+            if content is None:
+                break
+            parts = content.parts or []
 
             calls = [p.function_call for p in parts if p.function_call]
             if not calls:
