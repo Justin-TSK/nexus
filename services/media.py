@@ -98,11 +98,12 @@ def extract_pptx_text(path: str | Path) -> str | None:
                 return None
             out = []
             for name in slides:
+                slide_num = re.search(r"\d+", name).group()
                 root = ET.fromstring(archive.read(name))
                 texts = [t.text or "" for t in root.iter(f"{_PPTX_TEXT_NS}t")]
                 body = "\n".join(texts).strip()
                 if body:
-                    out.append(f"--- Diapositive {re.search(r'\d+', name).group()} ---\n{body}")
+                    out.append(f"--- Diapositive {slide_num} ---\n{body}")
             return "\n\n".join(out) or None
     except (zipfile.BadZipFile, ET.ParseError, OSError):
         return None
