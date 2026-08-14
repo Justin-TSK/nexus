@@ -77,6 +77,13 @@ class CalendarTool(BaseTool):
         if action == "list":
             return self._list(client, int(args.get("max") or 10), int(args.get("days") or 7))
         if action == "create":
+            if not args.get("_skip_confirm"):
+                return self.defer(
+                    self.name,
+                    args,
+                    user_id,
+                    f"Ajouter à l'agenda : « {args.get('summary') or '?'} » le {args.get('start') or '?'}.",
+                )
             return self._create(client, args)
         return self._err(f"Action inconnue : {action}")
 

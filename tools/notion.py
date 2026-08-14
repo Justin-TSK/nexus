@@ -67,12 +67,26 @@ class NotionTool(BaseTool):
         client = _NotionClient.get()
         action = args.get("action")
         if action == "create_note":
+            if not args.get("_skip_confirm"):
+                return self.defer(
+                    self.name,
+                    args,
+                    user_id,
+                    f"Créer une note Notion « {args.get('title') or 'sans titre'} ».",
+                )
             return self._create_note(client, args)
         if action == "search":
             return self._search(client, args.get("query") or "", int(args.get("limit") or 5))
         if action == "list_notes":
             return self._list_notes(client, int(args.get("limit") or 5))
         if action == "append":
+            if not args.get("_skip_confirm"):
+                return self.defer(
+                    self.name,
+                    args,
+                    user_id,
+                    f"Ajouter du contenu à la page Notion {args.get('page_id') or '?'}.",
+                )
             return self._append(client, args.get("page_id") or "", args.get("content") or "")
         return self._err(f"Action inconnue : {action}")
 
