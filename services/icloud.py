@@ -130,16 +130,26 @@ class IcloudMailClient:
             }
 
     def delete_emails(self, seqs: list[str], folder: str = "INBOX") -> dict:
-        """Déplace des messages vers la corbeille iCloud (récupérable, comme l'app Mail).
-
-        Si aucun dossier corbeille n'est trouvé, suppression définitive en secours.
+        """Supprime des messages. Essaie d'abord de les déplacer vers la corbeille
+        (serveurs qui acceptent COPY) ; sinon (cas d'iCloud, qui rejette COPY/APPEND),
+        suppression définitive.
         """
+        moved = False
         with self._connect() as conn:
             self._select(conn, folder)
             trash = self._trash_folder(conn)
+            if trash:
+                try:
+                    for seq in seqs:
+                        conn.copy(seq.encode(), trash)
+                    moved = True
+                except imaplib.IMAP4.error:
+                    logger.warning(
+                        "COPY vers la corbeille refusé par le serveur (%s) — suppression définitive.",
+                        trash,
+                    )
+                    moved = False
             for seq in seqs:
-                if trash:
-                    conn.copy(seq.encode(), trash)
                 status, _ = conn.store(seq.encode(), "+FLAGS", "\\Deleted")
                 if status != "OK":
                     raise IcloudMailError(f"Impossible de marquer le message {seq} comme supprimé.")
@@ -147,7 +157,7 @@ class IcloudMailClient:
         return {
             "deleted": seqs,
             "count": len(seqs),
-            "moved_to_trash": trash is not None,
+            "moved_to_trash": moved,
         }
 
     @staticmethod

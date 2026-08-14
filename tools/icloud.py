@@ -11,9 +11,10 @@ class IcloudMailTool(BaseTool):
         "Pour toute demande générique de type « mes emails » / « ma boîte mail », "
         "utilise TOUJOURS l'outil gmail en priorité. Actions : lister, compter, lire, "
         "supprimer, lister les dossiers. Le dossier Junk contient le SPAM : pour les "
-        "spams/pourriels, utilise folder=\"Junk\". La suppression iCloud déplace vers la "
-        "corbeille (récupérable ~30 jours, comme l'app Mail) — demande quand même une "
-        "confirmation à l'utilisateur."
+        "spams/pourriels, utilise folder=\"Junk\". ATTENTION : la suppression iCloud est "
+        "DÉFINITIVE et irréversible — iCloud ne permet pas de déplacer vers la corbeille "
+        "via IMAP (seule l'app Mail d'Apple peut le faire). Demande toujours une "
+        "confirmation explicite avant de supprimer."
     )
     parameters = {
         "type": "object",
