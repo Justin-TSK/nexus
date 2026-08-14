@@ -53,7 +53,7 @@ def main() -> None:
         logger.info("Démarrage en mode polling")
         application.run_polling(
             allowed_updates=Update.ALL_TYPES,
-            skip_pending=True,  # ignore les updates en attente pendant un redémarrage
+            drop_pending_updates=True,  # ignore les updates en attente pendant un redémarrage
         )
 
 
