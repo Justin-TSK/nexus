@@ -14,6 +14,7 @@ from core.agent import Agent, PendingConfirmation
 from services import media
 from services.proactive import build_digest_text
 from tools.registry import BaseTool
+from tools.translate import TranslateTool
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ HELP_TEXT = (
     "📄 *Fichiers* : envoie un PDF, une image, un fichier de code (py, txt, md, js…) :\n"
     "je le lis et je t'en fais un résumé ou de l'aide.\n\n"
     "⚙️ *Commandes*\n"
-    "• /traduire <texte> [FR|EN|ES] — traduction via DeepL\n"
+    "• /traduire <texte> [langue] — traduction DeepL (110 langues : FR, EN-US, RU, JA…)\n"
     "• /digest — point du jour (météo, agenda, mails)\n"
     "• /tools — liste les intégrations actives (Gmail, Notion, Spotify…)\n"
     "• /reset — efface la mémoire de la conversation\n"
@@ -298,7 +299,8 @@ async def _menu_action(query, context) -> None:
         await query.edit_message_text(
             "🌐 *Traduire*\n\n"
             "Envoie : `/traduire <texte> [langue]`\n"
-            "Langues : FR, EN, ES, DE, IT, PT.\n\n"
+            "Langues : 110 langues DeepL (FR, EN-US, EN-GB, DE, ES, IT, PT-PT, RU, "
+            "JA, KO, ZH-HANS, AR, TR…). Défaut : FR.\n\n"
             "Ex : `/traduire Bonjour comment ça va ? EN`",
             parse_mode="Markdown",
         )
@@ -350,12 +352,18 @@ async def cmd_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     args = context.args or []
     if not args:
         await update.message.reply_text(
-            "Usage : /traduire <texte> [FR|EN|ES]\nExemple : /traduire hello world FR"
+            "Usage : /traduire <texte> [langue]\n"
+            "Langues : 110 langues DeepL (ex : FR, EN-US, EN-GB, DE, ES, IT, PT-PT, RU, "
+            "JA, KO, ZH-HANS, AR, TR…). Par défaut : FR.\n"
+            "Exemple : /traduire hello world RU"
         )
         return
     target = "FR"
-    if args and args[-1].upper() in {"FR", "EN", "ES", "DE", "IT", "PT"}:
-        target = args.pop().upper()
+    if args:
+        normalized = TranslateTool.normalize_target(args[-1])
+        if normalized:
+            target = normalized
+            args.pop()
     text = " ".join(args)
     try:
         result = agent.translate(text, target_lang=target)
