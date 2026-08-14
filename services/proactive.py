@@ -146,8 +146,12 @@ async def check_reminders(app) -> None:
         chat = store.get_kv(f"chat:{uid}")
         if not chat:
             continue
-        notified = set(store.get_kv(f"notified:{uid}", []))
-        changed = False
+        notified_raw = store.get_kv(f"notified:{uid}", {})
+        if isinstance(notified_raw, list):
+            notified_raw = {ev_id: 0.0 for ev_id in notified_raw}
+        cutoff = time.time() - 86400
+        notified = {eid: ts for eid, ts in notified_raw.items() if ts >= cutoff}
+        changed = len(notified) != len(notified_raw)
         for ev in result.get("items", []):
             ev_id = ev.get("id")
             start = ev.get("start", {}).get("dateTime")
@@ -166,7 +170,7 @@ async def check_reminders(app) -> None:
                     )
                 except Exception:
                     logger.exception("Rappel — envoi impossible")
-                notified.add(ev_id)
+                notified[ev_id] = time.time()
                 changed = True
         if changed:
-            store.set_kv(f"notified:{uid}", sorted(notified))
+            store.set_kv(f"notified:{uid}", notified)

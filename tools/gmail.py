@@ -1,4 +1,5 @@
 import base64
+import re
 import threading
 from email.message import EmailMessage
 
@@ -33,16 +34,36 @@ def _header(msg: dict, name: str) -> str:
 
 
 def _extract_body(payload: dict) -> str:
+    def _decode(part: dict) -> str:
+        data = part.get("body", {}).get("data")
+        if not data:
+            return ""
+        return base64.urlsafe_b64decode(data).decode("utf-8", "replace")
+
+    def _find(parts: list[dict], mime: str) -> str:
+        for part in parts:
+            if part.get("mimeType") == mime and part.get("body", {}).get("data"):
+                return _decode(part)
+            nested = part.get("parts") or []
+            if nested:
+                found = _find(nested, mime)
+                if found:
+                    return found
+        return ""
+
     if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
-        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", "replace")
+        return _decode(payload)
     parts = payload.get("parts") or []
-    for part in parts:
-        if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
-            return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", "replace")
+    plain = _find(parts, "text/plain")
+    if plain:
+        return plain
+    html = _find(parts, "text/html")
+    if html:
+        return re.sub(r"<[^>]+>", " ", html)
     # dernier recours : tout premier texte trouvé
     for part in parts:
         if part.get("body", {}).get("data"):
-            return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", "replace")
+            return _decode(part)
     return "(contenu non textuel : image, PDF, …)"
 
 
