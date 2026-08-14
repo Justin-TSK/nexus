@@ -1,0 +1,21 @@
+[Unit]
+Description=Nexus - Agent IA personnel (Bot Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nexus
+Group=nexus
+WorkingDirectory=/opt/nexus
+EnvironmentFile=/opt/nexus/.env
+ExecStart=/opt/nexus/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+# Sécurité minimale : processus isolé, sans privilèges supplémentaires
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
