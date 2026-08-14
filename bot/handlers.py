@@ -18,10 +18,10 @@ from tools.registry import BaseTool
 logger = logging.getLogger(__name__)
 
 # Anti-double traitement : garde-mémoire des updates déjà vues (redélivraison réseau)
-# et des derniers /start par utilisateur (double appui sur le bouton Start).
+# et des derniers /start par utilisateur (double envoi du bouton Start par le client).
 _seen_updates: dict[int, float] = {}
-_last_start: dict[int, float] = {}
-_START_WINDOW = 3.0
+_last_start: dict[int, tuple[float, int]] = {}  # user_id -> (timestamp, message_id du menu)
+_START_WINDOW = 30.0
 
 
 def _seen(update: Update) -> bool:
@@ -214,6 +214,16 @@ async def _typing(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ── Commandes ────────────────────────────────────────────────────────
+def _START_TEXT(update: Update) -> str:
+    user = update.effective_user
+    first = user.first_name if user else ""
+    return (
+        f"Salut {first} 👋 Je suis ton agent d'études.\n"
+        "Choisis une action ci-dessous, ou envoie-moi simplement un message, "
+        "un vocal ou un fichier."
+    )
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
@@ -222,17 +232,28 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     user_id = update.effective_user.id if update.effective_user else 0
     now = time.monotonic()
-    if user_id in _last_start and now - _last_start[user_id] < _START_WINDOW:
-        return
-    _last_start[user_id] = now
+    logger.info("cmd_start: user=%s update_id=%s", user_id, update.update_id)
+    if user_id in _last_start:
+        prev_ts, prev_msg = _last_start[user_id]
+        if now - prev_ts < _START_WINDOW:
+            # Double envoi du bouton Start : édite le menu existant au lieu d'en envoyer un 2e.
+            logger.info("cmd_start: doublon ignoré (%.1fs), édition du menu %s", now - prev_ts, prev_msg)
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=prev_msg,
+                    text=_START_TEXT(update),
+                    reply_markup=MENU_KEYBOARD,
+                )
+            except Exception:
+                pass
+            return
     user = update.effective_user
-    first = user.first_name if user else ""
-    await update.message.reply_text(
-        f"Salut {first} 👋 Je suis ton agent d'études.\n"
-        "Choisis une action ci-dessous, ou envoie-moi simplement un message, "
-        "un vocal ou un fichier.",
+    msg = await update.message.reply_text(
+        _START_TEXT(update),
         reply_markup=MENU_KEYBOARD,
     )
+    _last_start[user_id] = (time.monotonic(), msg.message_id)
 
 
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
