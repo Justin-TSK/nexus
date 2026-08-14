@@ -279,7 +279,6 @@ async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not _authorized(update):
         await _deny(update)
         return
-    from services.proactive import build_digest_text
     try:
         async with _typing(update, context):
             message = await asyncio.to_thread(build_digest_text)
@@ -330,9 +329,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
         return
+    message = update.effective_message
+    if message is None or not message.text:
+        return
     agent: Agent = context.bot_data["agent"]
     user_id = update.effective_user.id
-    text = update.message.text
+    text = message.text
     try:
         async with _typing(update, context):
             reply = await agent.reply_to_text(user_id, text)
@@ -349,9 +351,12 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
         return
+    message = update.effective_message
+    if message is None or message.voice is None:
+        return
     agent: Agent = context.bot_data["agent"]
     user_id = update.effective_user.id
-    voice = update.message.voice
+    voice = message.voice
     try:
         async with _typing(update, context):
             file = await context.bot.get_file(voice.file_id)
@@ -370,15 +375,16 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not _authorized(update):
         await _deny(update)
         return
+    message = update.effective_message
+    if message is None:
+        return
     agent: Agent = context.bot_data["agent"]
     user_id = update.effective_user.id
 
-    file_obj = update.message.document or (
-        update.message.photo[-1] if update.message.photo else None
-    )
+    file_obj = message.document or (message.photo[-1] if message.photo else None)
     if file_obj is None:
         return
-    if update.message.photo:
+    if message.photo:
         suffix = ".jpg"
         filename = "photo.jpg"
     else:

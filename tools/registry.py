@@ -51,12 +51,25 @@ class BaseTool:
     # Actions en attente de confirmation (token → détails).
     _pending: dict[str, dict] = {}
     _pending_lock = threading.Lock()
+    PENDING_TTL_SEC = 900  # un bouton de confirmation expire après 15 min
+
+    @classmethod
+    def _prune(cls) -> None:
+        now = time.monotonic()
+        expired = [
+            token
+            for token, entry in cls._pending.items()
+            if now - entry["created"] > cls.PENDING_TTL_SEC
+        ]
+        for token in expired:
+            cls._pending.pop(token, None)
 
     @classmethod
     def defer(cls, tool_name: str, args: dict, user_id: int, details: str) -> dict:
         """Place une action en attente de confirmation et renvoie le jeton."""
         token = secrets.token_urlsafe(10)
         with cls._pending_lock:
+            cls._prune()
             cls._pending[token] = {
                 "tool": tool_name,
                 "args": dict(args),
@@ -70,11 +83,13 @@ class BaseTool:
     def resolve(cls, token: str) -> dict | None:
         """Récupère (et retire) une action confirmée par son jeton."""
         with cls._pending_lock:
+            cls._prune()
             return cls._pending.pop(token, None)
 
     @classmethod
     def discard(cls, token: str) -> None:
         with cls._pending_lock:
+            cls._prune()
             cls._pending.pop(token, None)
 
     @property

@@ -78,9 +78,9 @@ class IcloudMailTool(BaseTool):
                 result = client.delete_emails(ids, folder=folder)
                 return {
                     "message": (
-                        f"{len(ids)} mail(s) iCloud supprimé(s) définitivement (irréversible)."
+                        f"{len(ids)} mail(s) iCloud déplacé(s) vers la corbeille."
                         if result.get("moved_to_trash")
-                        else f"{len(ids)} mail(s) iCloud supprimé(s)."
+                        else f"{len(ids)} mail(s) iCloud supprimé(s) définitivement (irréversible)."
                     ),
                     "count": len(ids),
                 }

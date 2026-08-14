@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -96,7 +97,7 @@ def build_digest_text() -> str:
 
 
 async def send_digest(app) -> None:
-    message = build_digest_text()
+    message = await asyncio.to_thread(build_digest_text)
     for chat in _chat_ids():
         try:
             await app.bot.send_message(chat_id=chat, text=message)
@@ -105,6 +106,22 @@ async def send_digest(app) -> None:
 
 
 # ── Rappels agenda ─────────────────────────────────────────────────
+def _fetch_upcoming_events(client, time_min: str, time_max: str) -> dict:
+    """Lecture synchrone de l'agenda (exécutée hors event loop)."""
+    return (
+        client.events()
+        .list(
+            calendarId="primary",
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=10,
+        )
+        .execute()
+    )
+
+
 async def check_reminders(app) -> None:
     """Vérifie régulièrement l'agenda et signale les événements imminents.
     Met aussi à jour le heartbeat utilisé par le healthcheck."""
@@ -115,17 +132,11 @@ async def check_reminders(app) -> None:
     store = Store.get()
     try:
         client = _CalendarClient.get()
-        result = (
-            client.events()
-            .list(
-                calendarId="primary",
-                timeMin=now.isoformat(),
-                timeMax=horizon.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                maxResults=10,
-            )
-            .execute()
+        result = await asyncio.to_thread(
+            _fetch_upcoming_events,
+            client,
+            now.isoformat(),
+            horizon.isoformat(),
         )
     except Exception:
         logger.exception("Rappels — lecture agenda")
