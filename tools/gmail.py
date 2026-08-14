@@ -52,15 +52,16 @@ class GmailTool(BaseTool):
         "Boîte mail Gmail de l'utilisateur. Utilise-le quand il parle de mails, courriels, "
         "boîte de réception, messages non lus, ou pour trier, résumer et rédiger des "
         "e-mails administratifs ou professionnels (stages, profs, université). Peut lister, "
-        "chercher, lire ou envoyer un mail Gmail."
+        "chercher, lire, envoyer ou supprimer un mail Gmail (la suppression déplace vers "
+        "la corbeille, réversible)."
     )
     parameters = {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["list", "search", "read", "send"],
-                "description": "list: messages récents | search: recherche par requête Gmail | read: lire un message | send: envoyer un mail",
+                "enum": ["list", "search", "read", "send", "delete"],
+                "description": "list: messages récents | search: recherche par requête Gmail | read: lire un message | send: envoyer un mail | delete: déplacer vers la corbeille",
             },
             "query": {
                 "type": "string",
@@ -89,6 +90,8 @@ class GmailTool(BaseTool):
             return self._read(client, args.get("message_id") or "")
         if action == "send":
             return self._send(client, args.get("to"), args.get("subject"), args.get("body"))
+        if action == "delete":
+            return self._delete(client, args.get("message_id") or "")
         return self._err(f"Action inconnue : {action}")
 
     @staticmethod
@@ -139,3 +142,10 @@ class GmailTool(BaseTool):
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
         sent = client.users().messages().send(userId="me", body={"raw": raw}).execute()
         return {"message": "Mail envoyé.", "id": sent.get("id")}
+
+    @staticmethod
+    def _delete(client, message_id: str) -> dict:
+        if not message_id:
+            return {"error": "message_id manquant."}
+        client.users().messages().trash(userId="me", id=message_id).execute()
+        return {"message": "Mail déplacé vers la corbeille Gmail.", "id": message_id}

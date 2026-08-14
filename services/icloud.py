@@ -111,6 +111,16 @@ class IcloudMailClient:
                 "body": body,
             }
 
+    def delete_email(self, seq: str) -> dict:
+        """Supprime définitivement un message (\\Deleted + expunge, irréversible)."""
+        with self._connect() as conn:
+            conn.select("INBOX")
+            status, _ = conn.store(seq.encode(), "+FLAGS", "\\Deleted")
+            if status != "OK":
+                raise IcloudMailError("Impossible de marquer le message comme supprimé.")
+            conn.expunge()
+        return {"id": seq, "deleted": True}
+
     @staticmethod
     def _plain_body(msg: Message) -> str:
         if msg.is_multipart():

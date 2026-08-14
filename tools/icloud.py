@@ -6,18 +6,20 @@ from tools.registry import BaseTool
 class IcloudMailTool(BaseTool):
     name = "icloud_mail"
     description = (
-        "Boîte mail iCloud/Apple de l'utilisateur (IMAP, lecture seule). À n'utiliser que "
+        "Boîte mail iCloud/Apple de l'utilisateur (IMAP). À n'utiliser que "
         "s'il mentionne EXPLICITEMENT Apple, iCloud ou sa boîte @icloud.com. "
         "Pour toute demande générique de type « mes emails » / « ma boîte mail », "
-        "utilise TOUJOURS l'outil gmail en priorité. Lecture seule : lister, compter, lire."
+        "utilise TOUJOURS l'outil gmail en priorité. Actions : lister, compter, lire, "
+        "supprimer. ATTENTION : la suppression iCloud est DÉFINITIVE et irréversible — "
+        "demande toujours une confirmation explicite à l'utilisateur avant de supprimer."
     )
     parameters = {
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["list", "unread", "read"],
-                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message",
+                "enum": ["list", "unread", "read", "delete"],
+                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: supprimer définitivement un message (après confirmation)",
             },
             "criteria": {
                 "type": "string",
@@ -45,6 +47,11 @@ class IcloudMailTool(BaseTool):
             if action == "read":
                 msg = client.read_email(args.get("message_id") or "")
                 return msg
+            if action == "delete":
+                seq = args.get("message_id") or ""
+                if not seq:
+                    return self._err("message_id manquant.")
+                return client.delete_email(seq)
             return self._err(f"Action inconnue : {action}")
         except IcloudMailError as exc:
             return self._err(str(exc))
