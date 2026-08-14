@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from contextlib import asynccontextmanager
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -15,6 +16,25 @@ from services.proactive import build_digest_text
 from tools.registry import BaseTool
 
 logger = logging.getLogger(__name__)
+
+# Anti-double traitement : garde-mémoire des updates déjà vues (redélivraison réseau)
+# et des derniers /start par utilisateur (double appui sur le bouton Start).
+_seen_updates: dict[int, float] = {}
+_last_start: dict[int, float] = {}
+_START_WINDOW = 3.0
+
+
+def _seen(update: Update) -> bool:
+    """Retourne True si cette update a déjà été traitée (et l'enregistre sinon)."""
+    now = time.monotonic()
+    for key, ts in list(_seen_updates.items()):
+        if now - ts > 60:
+            _seen_updates.pop(key, None)
+    uid = update.update_id
+    if uid in _seen_updates:
+        return True
+    _seen_updates[uid] = now
+    return False
 
 HELP_TEXT = (
     "🤖 *Mon agent IA — aide*\n\n"
@@ -132,6 +152,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     if query is None or not query.data:
         return
+    if _seen(update):
+        return
     await query.answer()
     if settings.allowed_user_ids and query.from_user.id not in settings.allowed_user_ids:
         return
@@ -196,6 +218,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
         return
+    if _seen(update):
+        return
+    user_id = update.effective_user.id if update.effective_user else 0
+    now = time.monotonic()
+    if user_id in _last_start and now - _last_start[user_id] < _START_WINDOW:
+        return
+    _last_start[user_id] = now
     user = update.effective_user
     first = user.first_name if user else ""
     await update.message.reply_text(
@@ -329,6 +358,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
         return
+    if _seen(update):
+        return
     message = update.effective_message
     if message is None or not message.text:
         return
@@ -350,6 +381,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
+        return
+    if _seen(update):
         return
     message = update.effective_message
     if message is None or message.voice is None:
@@ -374,6 +407,8 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await _deny(update)
+        return
+    if _seen(update):
         return
     message = update.effective_message
     if message is None:
