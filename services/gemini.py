@@ -167,7 +167,25 @@ class GeminiService:
                 return f"« {filename} » est en réalité un PDF déguisé en .docx. Renomme-le en .pdf et renvoie-le."
             text = extractors[path.suffix.lower()](path)
             if text is None:
-                logger.warning("Extraction Office échouée : %s (magic=%r)", filename, magic[:4])
+                members = []
+                try:
+                    import zipfile
+                    with zipfile.ZipFile(path) as z:
+                        members = z.namelist()[:25]
+                except Exception:
+                    pass
+                logger.warning(
+                    "Extraction Office échouée : %s (magic=%r, taille=%d, zip=%s)",
+                    filename, magic[:4], path.stat().st_size, members,
+                )
+                try:
+                    debug_dir = Path(settings.DATA_DIR) / "debug"
+                    debug_dir.mkdir(parents=True, exist_ok=True)
+                    import shutil
+                    shutil.copy2(path, debug_dir / filename)
+                    logger.info("Fichier conservé pour diagnostic : %s", debug_dir / filename)
+                except Exception:
+                    pass
                 return (
                     f"Impossible de lire « {filename} » : ce n'est pas un fichier "
                     ".docx/.pptx/.xlsx valide (corrompu ou autre format renommé)."
