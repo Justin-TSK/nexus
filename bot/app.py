@@ -50,6 +50,20 @@ def build_registry() -> ToolRegistry:
     return registry
 
 
+async def _notify_startup(app: Application) -> None:
+    """Prévient l'utilisateur qu'un redémarrage vient d'avoir lieu."""
+    for uid in settings.allowed_user_ids:
+        chat = app.bot_data.get("agent").store.get_kv(f"chat:{uid}")
+        if chat is None:
+            chat = uid
+        try:
+            await app.bot.send_message(
+                chat_id=chat, text="🔋 Nexus est en ligne (redémarrage effectué)."
+            )
+        except Exception:
+            logger.exception("Notification de démarrage impossible (chat %s)", chat)
+
+
 def build_application() -> Application:
     registry = build_registry()
     agent = Agent(GeminiService(), DeeplService(), registry)
@@ -66,6 +80,7 @@ def build_application() -> Application:
         interval=proactive.CHECK_INTERVAL_SEC,
         first=60,
     )
+    application.job_queue.run_once(_notify_startup, when=3)
 
     application.add_handler(CommandHandler("start", handlers.cmd_start))
     application.add_handler(CommandHandler("help", handlers.cmd_help))

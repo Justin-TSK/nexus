@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -105,6 +106,9 @@ async def send_digest(app) -> None:
 
 # ── Rappels agenda ─────────────────────────────────────────────────
 async def check_reminders(app) -> None:
+    """Vérifie régulièrement l'agenda et signale les événements imminents.
+    Met aussi à jour le heartbeat utilisé par le healthcheck."""
+    Store.get().set_kv("heartbeat", time.time())
     tz = ZoneInfo(settings.CALENDAR_TIMEZONE)
     now = datetime.now(tz)
     horizon = now + timedelta(minutes=REMINDER_WINDOW_MIN)

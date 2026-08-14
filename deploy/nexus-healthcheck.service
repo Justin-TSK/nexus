@@ -1,0 +1,6 @@
+[Unit]
+Description=Healthcheck du service nexus
+
+[Service]
+Type=oneshot
+ExecStart=/opt/nexus/.venv/bin/python /opt/nexus/deploy/healthcheck.py
