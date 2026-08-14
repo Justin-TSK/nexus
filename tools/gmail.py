@@ -53,7 +53,10 @@ class GmailTool(BaseTool):
         "boîte de réception, messages non lus, ou pour trier, résumer et rédiger des "
         "e-mails administratifs ou professionnels (stages, profs, université). Peut lister, "
         "chercher, lire, envoyer ou supprimer un mail Gmail (la suppression déplace vers "
-        "la corbeille, réversible)."
+        "la corbeille, réversible). Les suppressions et envois sont confirmés "
+        "AUTOMATIQUEMENT par l'outil via des boutons : appelle directement l'action "
+        "delete/send quand l'utilisateur le demande, sans poser de question préalable "
+        "en texte."
     )
     parameters = {
         "type": "object",
@@ -61,7 +64,7 @@ class GmailTool(BaseTool):
             "action": {
                 "type": "string",
                 "enum": ["list", "search", "read", "send", "delete"],
-                "description": "list: messages récents | search: recherche par requête Gmail | read: lire un message | send: envoyer un mail | delete: déplacer vers la corbeille",
+                "description": "list: messages récents | search: recherche par requête Gmail | read: lire un message | send: envoyer un mail (confirmation par boutons) | delete: déplacer vers la corbeille (confirmation par boutons)",
             },
             "query": {
                 "type": "string",

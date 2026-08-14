@@ -13,8 +13,10 @@ class IcloudMailTool(BaseTool):
         "supprimer, lister les dossiers. Le dossier Junk contient le SPAM : pour les "
         "spams/pourriels, utilise folder=\"Junk\". ATTENTION : la suppression iCloud est "
         "DÉFINITIVE et irréversible — iCloud ne permet pas de déplacer vers la corbeille "
-        "via IMAP (seule l'app Mail d'Apple peut le faire). Demande toujours une "
-        "confirmation explicite avant de supprimer."
+        "via IMAP (seule l'app Mail d'Apple peut le faire). La confirmation de la "
+        "suppression est gérée AUTOMATIQUEMENT par l'outil (boutons affichés à "
+        "l'utilisateur) : quand il demande une suppression, appelle directement l'action "
+        "delete sans poser de question préalable en texte."
     )
     parameters = {
         "type": "object",
@@ -22,7 +24,7 @@ class IcloudMailTool(BaseTool):
             "action": {
                 "type": "string",
                 "enum": ["list", "unread", "read", "delete", "folders"],
-                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: déplacer vers la corbeille (après confirmation) | folders: lister les dossiers disponibles",
+                "description": "list: lister les messages | unread: compter les non-lus | read: lire un message | delete: supprimer (confirmation par boutons automatique) | folders: lister les dossiers disponibles",
             },
             "folder": {
                 "type": "string",
