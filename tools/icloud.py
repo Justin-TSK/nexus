@@ -75,7 +75,15 @@ class IcloudMailTool(BaseTool):
                         self.name, args, user_id,
                         f"Supprimer définitivement {len(ids)} mail(s) iCloud (irréversible).",
                     )
-                return client.delete_emails(ids, folder=folder)
+                result = client.delete_emails(ids, folder=folder)
+                return {
+                    "message": (
+                        f"{len(ids)} mail(s) iCloud supprimé(s) définitivement (irréversible)."
+                        if result.get("moved_to_trash")
+                        else f"{len(ids)} mail(s) iCloud supprimé(s)."
+                    ),
+                    "count": len(ids),
+                }
             return self._err(f"Action inconnue : {action}")
         except IcloudMailError as exc:
             return self._err(str(exc))

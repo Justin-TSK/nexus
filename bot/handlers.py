@@ -95,12 +95,12 @@ def _confirmation_keyboard(token: str) -> InlineKeyboardMarkup:
 
 
 def _format_tool_result(result: dict) -> str:
-    """Transforme le dict retourné par un outil en texte pour l'utilisateur."""
+    """Transforme le dict retourné par un outil en texte clair pour l'utilisateur."""
     if result.get("error"):
         return "❌ " + str(result["error"])
     parts = [str(result.get("message") or "✅ Fait.")]
-    for key in ("summary", "start", "subject", "count", "link", "deleted"):
-        if key in result and key != "message":
+    for key in ("summary", "start", "subject", "link"):
+        if key in result:
             parts.append(f"{key} : {result[key]}")
     return "\n".join(parts)
 
